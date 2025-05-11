@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mental Health Chatbot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f4f8;
+        }
+        #chat-container {
+            max-width: 600px;
+            margin: auto;
+            border: 1px solid #ccc;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        #chat-output {
+            height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #fafafa;
+        }
+        #user-input {
+            width: 80%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 10px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #video {
+            width: 100%;
+            max-width: 300px;
+            margin-top: 10px;
+            display: none;
+        }
+        #canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="chat-container">
+        <h2>Mental Health Chatbot</h2>
+        <div id="chat-output"></div>
+        <input type="text" id="user-input" placeholder="Type your message or use voice...">
+        <button onclick="sendMessage()">Send</button>
+        <button onclick="startVoice()">Speak</button>
+        <button onclick="startCamera()">Capture Image</button>
+        <video id="video" autoplay></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script>
+        const chatOutput = document.getElementById('chat-output');
+        const userInput = document.getElementById('user-input');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        let stream;
+
+        // Simple AI response logic
+        const responses = {
+            "sad": "I'm sorry you're feeling sad. Would you like to talk about what's been going on?",
+            "anxious": "Anxiety can be tough. Try taking slow, deep breaths. Want to share more?",
+            "stressed": "Stress can be overwhelming. Maybe a short break or some mindfulness could help. What's stressing you?",
+            "happy": "That's wonderful to hear! What's got you in such a great mood?",
+            "help": "I'm here for you. Could you share more about what you're feeling or experiencing?",
+            "default": "Thanks for sharing. Can you tell me more about how you're feeling?"
+        };
+
+        // Initialize Speech Recognition
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+
+        if (recognition) {
+            recognition.continuous = false;
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                userInput.value = transcript;
+                sendMessage();
+            };
+
+            recognition.onerror = (event) => {
+                appendMessage('Bot', 'Sorry, I couldn’t understand. Please try again.');
+            };
+        }
+
+        // Initialize Speech Synthesis
+        const synth = window.speechSynthesis;
+
+        function speak(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            synth.speak(utterance);
+        }
+
+        // Send message and get response
+        function sendMessage() {
+            const message = userInput.value.trim().toLowerCase();
+            if (!message) return;
+
+            appendMessage('You', message);
+            const response = getAIResponse(message);
+            appendMessage('Bot', response);
+            speak(response);
+            saveToCSV('text', message, response);
+            userInput.value = '';
+        }
+
+        // Append message to chat output
+        function appendMessage(sender, message) {
+            const div = document.createElement('div');
+            div.textContent = `${sender}: ${message}`;
+            chatOutput.appendChild(div);
+            chatOutput.scrollTop = chatOutput.scrollHeight;
+        }
+
+        // Get AI response based on input
+        function getAIResponse(message) {
+            for (let key in responses) {
+                if (message.includes(key)) {
+                    return responses[key];
+                }
+            }
+            return responses['default'];
+        }
+
+        // Start voice recognition
+        function startVoice() {
+            if (recognition) {
+                recognition.start();
+            } else {
+                appendMessage('Bot', 'Speech recognition is not supported in this browser.');
+            }
+        }
+
+        // Start camera for image capture
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                video.style.display = 'block';
+                setTimeout(captureImage, 3000); // Capture after 3 seconds
+            } catch (err) {
+                appendMessage('Bot', 'Could not access camera.');
+            }
+        }
+
+        // Capture image from video
+        function captureImage() {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/png');
+            appendMessage('Bot', 'Image captured!');
+            saveToCSV('image', 'Image captured', imageData);
+            stopCamera();
+        }
+
+        // Stop camera
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.style.display = 'none';
+            }
+        }
+
+        // Save interaction to CSV
+        function saveToCSV(type, userInput, botResponse) {
+            const timestamp = new Date().toISOString();
+            const csvRow = `"${timestamp}","${type}","${userInput.replace(/"/g, '""')}","${botResponse.replace(/"/g, '""')}"\n`;
+            const blob = new Blob([csvRow], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'mental_health_data.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Handle Enter key for sending message
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
